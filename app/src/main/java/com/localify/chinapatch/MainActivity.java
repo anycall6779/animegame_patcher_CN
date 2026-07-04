@@ -56,6 +56,7 @@ import java.security.cert.X509Certificate;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.TreeMap;
@@ -67,6 +68,7 @@ import java.util.zip.CRC32;
 import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
 import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 import java.util.zip.ZipInputStream;
 
 public class MainActivity extends Activity {
@@ -76,7 +78,7 @@ public class MainActivity extends Activity {
     private static final String DEFAULT_JS_URL = "https://codeberg.org/rouzzang/animagameGirlZ/raw/commit/ca7d11156f1140271a80e39b7d45af8985af28bc/libfrida-gadget.script_KR.js";
     private static final String OLD_APP = "com.combosdk.openapi.ComboApplication";
     private static final String NEW_APP = "com.combosdk.openapi.ComboAppProxy";
-    private static final String CLASSES5_PATH = "classes5.dex";
+    private static final String LOADER_DEX_ASSET = "payload/classes5.dex";
     private static final String LIB_PATH = "lib/arm64-v8a/libanimegame_native_localify.so";
     private static final String BLOB_PATH = "assets/animegame_translation_blob.bin";
     private static final Set<String> LAUNCHER_ICON_ENTRIES = new HashSet<>();
@@ -1002,11 +1004,12 @@ public class MainActivity extends Activity {
 
     static final class ApkPatcher {
         static void patch(Activity activity, File original, File output, File blob, PatchOptions options) throws Exception {
-            byte[] classes5 = readAsset(activity, "payload/classes5.dex");
+            byte[] loaderDex = readAsset(activity, LOADER_DEX_ASSET);
             byte[] nativeLib = readAsset(activity, "payload/libanimegame_native_localify.so");
             byte[] icon = readAsset(activity, options.iconAsset);
+            String loaderDexPath = nextClassesDexPath(original);
             Set<String> skip = new HashSet<>();
-            Collections.addAll(skip, "AndroidManifest.xml", CLASSES5_PATH, LIB_PATH, BLOB_PATH);
+            Collections.addAll(skip, "AndroidManifest.xml", LIB_PATH, BLOB_PATH);
             File tempDir = new File(output.getParentFile(), "zip-stream-work");
             deleteDir(tempDir);
             if (!tempDir.mkdirs()) throw new IOException("zip temp dir create failed");
@@ -1018,6 +1021,9 @@ public class MainActivity extends Activity {
                 while ((e = zin.getNextEntry()) != null) {
                     String name = e.getName();
                     if (name.startsWith("META-INF/") || skip.contains(name)) continue;
+                    if (name.equals(loaderDexPath)) {
+                        throw new IOException("loader dex path already exists: " + loaderDexPath);
+                    }
                     int method = e.getMethod() == ZipEntry.STORED ? ZipEntry.STORED : ZipEntry.DEFLATED;
                     if (name.equals("resources.arsc")) {
                         zout.add(name, patchTitle(readAll(zin), options.appTitle), method);
@@ -1032,16 +1038,41 @@ public class MainActivity extends Activity {
                     }
                 }
                 byte[] manifest;
-                try (java.util.zip.ZipFile zf = new java.util.zip.ZipFile(original)) {
+                try (ZipFile zf = new ZipFile(original)) {
                     manifest = patchManifest(readAll(zf.getInputStream(zf.getEntry("AndroidManifest.xml"))));
                 }
                 zout.add("AndroidManifest.xml", manifest, ZipEntry.DEFLATED);
-                zout.add(CLASSES5_PATH, classes5, ZipEntry.DEFLATED);
+                zout.add(loaderDexPath, loaderDex, ZipEntry.DEFLATED);
                 zout.add(LIB_PATH, nativeLib, ZipEntry.STORED);
                 zout.addFile(BLOB_PATH, blob, ZipEntry.STORED, tempDir);
             } finally {
                 deleteDir(tempDir);
             }
+        }
+
+        private static String nextClassesDexPath(File apk) throws IOException {
+            int maxDex = 0;
+            try (ZipFile zf = new ZipFile(apk)) {
+                Enumeration<? extends ZipEntry> entries = zf.entries();
+                while (entries.hasMoreElements()) {
+                    String name = entries.nextElement().getName();
+                    if (!name.startsWith("classes") || !name.endsWith(".dex")) continue;
+                    String suffix = name.substring("classes".length(), name.length() - ".dex".length());
+                    int index;
+                    if (suffix.isEmpty()) {
+                        index = 1;
+                    } else {
+                        try {
+                            index = Integer.parseInt(suffix);
+                        } catch (NumberFormatException ignored) {
+                            continue;
+                        }
+                    }
+                    if (index > maxDex) maxDex = index;
+                }
+            }
+            int next = maxDex + 1;
+            return next <= 1 ? "classes.dex" : "classes" + next + ".dex";
         }
 
         private static boolean isIconEntry(String name) {

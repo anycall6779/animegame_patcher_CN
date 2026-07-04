@@ -35,6 +35,7 @@
 - 라이트/다크 모드 전환
 - 결과 APK 설치 화면 열기
 - 다운로드 스트림이 중간에 끊길 때 3회 재시도
+- 원본 APK의 `classes*.dex`를 보존하고 다음 빈 dex 번호에 로더를 추가한다. 예: bilibili판은 원본 `classes5.dex`/`classes6.dex`가 있으므로 로더가 `classes7.dex`로 들어간다.
 
 기본 번역 JS:
 
