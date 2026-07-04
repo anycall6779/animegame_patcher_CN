@@ -1,0 +1,12 @@
+.gradle/
+.gradle-dist/
+build/
+app/build/
+local.properties
+*.iml
+.idea/
+*.apk
+*.ap_
+*.dex.tmp
+*.class
+*.log
