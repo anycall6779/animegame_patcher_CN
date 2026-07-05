@@ -3,6 +3,9 @@ package com.localify.chinapatch;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
@@ -27,6 +30,7 @@ import android.widget.RadioGroup;
 import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.core.content.FileProvider;
 
@@ -46,6 +50,8 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
@@ -97,6 +103,7 @@ public class MainActivity extends Activity {
     private ProgressBar progressBar;
     private Button runButton;
     private Button installButton;
+    private Button copyLogButton;
     private RadioGroup apkSourceGroup;
     private RadioGroup titleGroup;
     private RadioGroup iconGroup;
@@ -185,6 +192,9 @@ public class MainActivity extends Activity {
         progressText = text("대기 중", 13, false);
         root.addView(progressText, full());
 
+        copyLogButton = button("로그 복사");
+        root.addView(copyLogButton, full());
+
         logView = text("", 13, false);
         logView.setMinLines(10);
         logView.setMovementMethod(new ScrollingMovementMethod());
@@ -203,6 +213,7 @@ public class MainActivity extends Activity {
         selectJs.setOnClickListener(v -> openPicker(REQ_JS, "*/*"));
         runButton.setOnClickListener(v -> runPatchFlow());
         installButton.setOnClickListener(v -> openInstallIntent());
+        copyLogButton.setOnClickListener(v -> copyVisibleLog());
     }
 
     private void loadServerList() {
@@ -302,6 +313,7 @@ public class MainActivity extends Activity {
             } catch (Exception e) {
                 progress(0, "실패");
                 appendLog("실패: " + e);
+                appendLog(stackTraceToString(e));
             } finally {
                 patchRunning = false;
                 PatchForegroundService.stop(this);
@@ -446,6 +458,24 @@ public class MainActivity extends Activity {
 
     private void appendLog(String text) {
         runOnUiThread(() -> logView.append(text + "\n"));
+    }
+
+    private void copyVisibleLog() {
+        StringBuilder out = new StringBuilder();
+        out.append("progress=").append(progressText == null ? "" : progressText.getText()).append('\n');
+        out.append("log=\n");
+        out.append(logView == null ? "" : logView.getText());
+        ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        if (clipboard != null) {
+            clipboard.setPrimaryClip(ClipData.newPlainText("China APK PATCH log", out.toString()));
+            Toast.makeText(this, "로그를 클립보드에 복사했습니다.", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private static String stackTraceToString(Throwable throwable) {
+        StringWriter writer = new StringWriter();
+        throwable.printStackTrace(new PrintWriter(writer));
+        return writer.toString();
     }
 
     private void progress(int value, String text) {
